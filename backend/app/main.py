@@ -100,6 +100,7 @@ def get_tickets():
     db = SessionLocal()
 
     try:
+
         tickets = db.query(Ticket).all()
 
         return [
@@ -140,16 +141,13 @@ def process_ticket(ticket_id: int):
                 detail="Ticket not found",
             )
 
-        # AI classification
         result = classify_ticket(ticket)
 
-        # Calculate reward
         reward = calculate_reward(
             predicted_escalation=result["escalation"],
             expected_escalation=ticket.expected_escalation,
         )
 
-        # Store prediction
         prediction = Prediction(
             ticket_id=ticket.id,
             predicted_category=result["category"],
@@ -160,9 +158,7 @@ def process_ticket(ticket_id: int):
         )
 
         db.add(prediction)
-
         db.commit()
-
         db.refresh(prediction)
 
         return {
@@ -182,7 +178,7 @@ def process_ticket(ticket_id: int):
 
 
 # ==========================================================
-# PROCESS ALL UNPROCESSED TICKETS
+# PROCESS BATCH OF UNPROCESSED TICKETS
 # ==========================================================
 
 @app.post("/process-all")
@@ -192,24 +188,33 @@ def process_all_tickets():
 
     try:
 
-        tickets = db.query(Ticket).all()
+        # Only take 5 unprocessed tickets per request.
+        # This prevents exceeding the Gemini free-tier
+        # request-per-minute quota.
+        tickets = (
+            db.query(Ticket)
+            .outerjoin(
+                Prediction,
+                Prediction.ticket_id == Ticket.id,
+            )
+            .filter(Prediction.id == None)
+            .limit(5)
+            .all()
+        )
+
+        if not tickets:
+
+            return {
+                "message": "All tickets have already been processed",
+                "processed": 0,
+                "remaining": 0,
+                "total_reward": 0,
+            }
 
         processed = 0
-        skipped = 0
         total_reward = 0
 
         for ticket in tickets:
-
-            # Check whether this ticket already has a prediction
-            existing = (
-                db.query(Prediction)
-                .filter(Prediction.ticket_id == ticket.id)
-                .first()
-            )
-
-            if existing:
-                skipped += 1
-                continue
 
             # Send ticket to AI agent
             result = classify_ticket(ticket)
@@ -237,11 +242,21 @@ def process_all_tickets():
 
         db.commit()
 
+        # Count tickets still waiting to be processed
+        remaining = (
+            db.query(Ticket)
+            .outerjoin(
+                Prediction,
+                Prediction.ticket_id == Ticket.id,
+            )
+            .filter(Prediction.id == None)
+            .count()
+        )
+
         return {
             "message": "Batch processing completed",
-            "total_tickets": len(tickets),
             "processed": processed,
-            "skipped": skipped,
+            "remaining": remaining,
             "total_reward": total_reward,
         }
 
@@ -311,14 +326,12 @@ def get_metrics():
                 "average_reward": 0.0,
             }
 
-        # Count correct predictions
         correct_predictions = sum(
             1
             for prediction in predictions
             if prediction.reward == 1
         )
 
-        # Calculate average reward
         average_reward = (
             sum(
                 prediction.reward
@@ -327,7 +340,6 @@ def get_metrics():
             / total_predictions
         )
 
-        # Calculate accuracy
         accuracy = (
             correct_predictions
             / total_predictions
