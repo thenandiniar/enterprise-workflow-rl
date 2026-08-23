@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.database.seed import seed_database
 from backend.app.database.connection import SessionLocal
 from backend.app.database.init_db import init_db
 from backend.app.models.ticket import Ticket
@@ -64,6 +65,38 @@ def health_check():
         "status": "healthy",
         "service": "enterprise-workflow-api",
     }
+
+
+# --------------------------------------------------
+# SEED DATABASE
+# --------------------------------------------------
+
+@app.post("/seed")
+def seed():
+
+    try:
+        seed_database()
+
+        db = SessionLocal()
+
+        try:
+            ticket_count = db.query(Ticket).count()
+
+        finally:
+            db.close()
+
+        return {
+            "message": "Database seeded successfully",
+            "status": "success",
+            "total_tickets": ticket_count,
+        }
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database seeding failed: {str(error)}",
+        )
 
 
 # --------------------------------------------------
