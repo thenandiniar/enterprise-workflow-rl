@@ -16,21 +16,35 @@ app = FastAPI(
 )
 
 
-# Initialize database tables when the application starts
-init_db()
+# --------------------------------------------------
+# DATABASE INITIALIZATION
+# --------------------------------------------------
 
+@app.on_event("startup")
+def startup():
+    init_db()
+
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://enterprise-workflow-rl.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# --------------------------------------------------
+# ROOT
+# --------------------------------------------------
 
 @app.get("/")
 def root():
@@ -40,6 +54,10 @@ def root():
     }
 
 
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+
 @app.get("/health")
 def health_check():
     return {
@@ -48,11 +66,17 @@ def health_check():
     }
 
 
+# --------------------------------------------------
+# GET TICKETS
+# --------------------------------------------------
+
 @app.get("/tickets")
 def get_tickets():
+
     db = SessionLocal()
 
     try:
+
         tickets = db.query(Ticket).all()
 
         return [
@@ -67,14 +91,21 @@ def get_tickets():
         ]
 
     finally:
+
         db.close()
 
 
+# --------------------------------------------------
+# PROCESS TICKET
+# --------------------------------------------------
+
 @app.post("/tickets/{ticket_id}/process")
 def process_ticket(ticket_id: int):
+
     db = SessionLocal()
 
     try:
+
         ticket = (
             db.query(Ticket)
             .filter(Ticket.id == ticket_id)
@@ -82,18 +113,22 @@ def process_ticket(ticket_id: int):
         )
 
         if not ticket:
+
             raise HTTPException(
                 status_code=404,
                 detail="Ticket not found",
             )
 
+        # Send ticket to AI agent
         result = classify_ticket(ticket)
 
+        # Calculate reward
         reward = calculate_reward(
             predicted_escalation=result["escalation"],
             expected_escalation=ticket.expected_escalation,
         )
 
+        # Save prediction
         prediction = Prediction(
             ticket_id=ticket.id,
             predicted_category=result["category"],
@@ -104,7 +139,9 @@ def process_ticket(ticket_id: int):
         )
 
         db.add(prediction)
+
         db.commit()
+
         db.refresh(prediction)
 
         return {
@@ -120,14 +157,21 @@ def process_ticket(ticket_id: int):
         }
 
     finally:
+
         db.close()
 
 
+# --------------------------------------------------
+# GET PREDICTIONS
+# --------------------------------------------------
+
 @app.get("/predictions")
 def get_predictions():
+
     db = SessionLocal()
 
     try:
+
         predictions = db.query(Prediction).all()
 
         return [
@@ -143,19 +187,28 @@ def get_predictions():
         ]
 
     finally:
+
         db.close()
 
 
+# --------------------------------------------------
+# METRICS
+# --------------------------------------------------
+
 @app.get("/metrics")
 def get_metrics():
+
     db = SessionLocal()
 
     try:
+
         predictions = db.query(Prediction).all()
 
         total_predictions = len(predictions)
 
+        # No predictions yet
         if total_predictions == 0:
+
             return {
                 "total_predictions": 0,
                 "correct_predictions": 0,
@@ -163,18 +216,27 @@ def get_metrics():
                 "average_reward": 0.0,
             }
 
+        # Count correct predictions
         correct_predictions = sum(
             1
             for prediction in predictions
             if prediction.reward == 1
         )
 
-        average_reward = sum(
-            prediction.reward
-            for prediction in predictions
-        ) / total_predictions
+        # Average reward
+        average_reward = (
+            sum(
+                prediction.reward
+                for prediction in predictions
+            )
+            / total_predictions
+        )
 
-        accuracy = correct_predictions / total_predictions
+        # Accuracy
+        accuracy = (
+            correct_predictions
+            / total_predictions
+        )
 
         return {
             "total_predictions": total_predictions,
@@ -184,4 +246,5 @@ def get_metrics():
         }
 
     finally:
+
         db.close()
