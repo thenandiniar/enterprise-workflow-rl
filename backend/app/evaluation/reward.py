@@ -3,31 +3,37 @@ def calculate_reward(
     expected_escalation: str,
 ) -> float:
     """
-    Calculate reward by comparing whether the AI decided
-    to escalate with the expected escalation decision.
+    Evaluate whether the AI made the correct escalation decision.
 
-    Expected escalation:
-        "yes" / "no"
+    expected_escalation:
+        "yes" -> ticket should be escalated
+        "no"  -> ticket should not be escalated
 
-    Predicted escalation:
+    predicted_escalation:
         "billing_team"
         "technical_team"
         "identity_team"
+        "no_escalation"
     """
 
-    # Any team route means the AI decided to escalate.
-    predicted_should_escalate = predicted_escalation in {
+    escalation_teams = {
         "billing_team",
         "technical_team",
         "identity_team",
     }
 
-    # Convert database value to boolean.
-    expected_should_escalate = expected_escalation.lower() == "yes"
+    predicted_escalation = predicted_escalation.strip().lower()
+    expected_escalation = expected_escalation.strip().lower()
 
-    # Correct routing decision.
-    if predicted_should_escalate == expected_should_escalate:
+    predicted_requires_escalation = (
+        predicted_escalation in escalation_teams
+    )
+
+    expected_requires_escalation = (
+        expected_escalation == "yes"
+    )
+
+    if predicted_requires_escalation == expected_requires_escalation:
         return 1.0
 
-    # Incorrect routing decision.
     return -1.0
