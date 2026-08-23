@@ -25,7 +25,6 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup():
-
     init_db()
 
 
@@ -52,7 +51,6 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-
     return {
         "message": "Enterprise Workflow RL Environment API",
         "status": "running",
@@ -65,7 +63,6 @@ def root():
 
 @app.get("/health")
 def health_check():
-
     return {
         "status": "healthy",
         "service": "enterprise-workflow-api",
@@ -78,9 +75,7 @@ def health_check():
 
 @app.post("/seed")
 def seed():
-
     try:
-
         result = seed_database()
 
         return {
@@ -89,7 +84,6 @@ def seed():
         }
 
     except Exception as e:
-
         raise HTTPException(
             status_code=500,
             detail=str(e),
@@ -106,7 +100,6 @@ def get_tickets():
     db = SessionLocal()
 
     try:
-
         tickets = db.query(Ticket).all()
 
         return [
@@ -121,12 +114,11 @@ def get_tickets():
         ]
 
     finally:
-
         db.close()
 
 
 # ==========================================================
-# PROCESS TICKET
+# PROCESS SINGLE TICKET
 # ==========================================================
 
 @app.post("/tickets/{ticket_id}/process")
@@ -143,7 +135,6 @@ def process_ticket(ticket_id: int):
         )
 
         if not ticket:
-
             raise HTTPException(
                 status_code=404,
                 detail="Ticket not found",
@@ -187,7 +178,83 @@ def process_ticket(ticket_id: int):
         }
 
     finally:
+        db.close()
 
+
+# ==========================================================
+# PROCESS ALL UNPROCESSED TICKETS
+# ==========================================================
+
+@app.post("/process-all")
+def process_all_tickets():
+
+    db = SessionLocal()
+
+    try:
+
+        tickets = db.query(Ticket).all()
+
+        processed = 0
+        skipped = 0
+        total_reward = 0
+
+        for ticket in tickets:
+
+            # Check whether this ticket already has a prediction
+            existing = (
+                db.query(Prediction)
+                .filter(Prediction.ticket_id == ticket.id)
+                .first()
+            )
+
+            if existing:
+                skipped += 1
+                continue
+
+            # Send ticket to AI agent
+            result = classify_ticket(ticket)
+
+            # Calculate reward
+            reward = calculate_reward(
+                predicted_escalation=result["escalation"],
+                expected_escalation=ticket.expected_escalation,
+            )
+
+            # Store prediction
+            prediction = Prediction(
+                ticket_id=ticket.id,
+                predicted_category=result["category"],
+                predicted_urgency=result["urgency"],
+                predicted_escalation=result["escalation"],
+                response=result["response"],
+                reward=reward,
+            )
+
+            db.add(prediction)
+
+            processed += 1
+            total_reward += reward
+
+        db.commit()
+
+        return {
+            "message": "Batch processing completed",
+            "total_tickets": len(tickets),
+            "processed": processed,
+            "skipped": skipped,
+            "total_reward": total_reward,
+        }
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
         db.close()
 
 
@@ -217,7 +284,6 @@ def get_predictions():
         ]
 
     finally:
-
         db.close()
 
 
@@ -245,12 +311,14 @@ def get_metrics():
                 "average_reward": 0.0,
             }
 
+        # Count correct predictions
         correct_predictions = sum(
             1
             for prediction in predictions
             if prediction.reward == 1
         )
 
+        # Calculate average reward
         average_reward = (
             sum(
                 prediction.reward
@@ -259,6 +327,7 @@ def get_metrics():
             / total_predictions
         )
 
+        # Calculate accuracy
         accuracy = (
             correct_predictions
             / total_predictions
@@ -272,5 +341,4 @@ def get_metrics():
         }
 
     finally:
-
         db.close()
