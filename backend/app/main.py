@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.database.seed import seed_database
 from backend.app.database.connection import SessionLocal
 from backend.app.database.init_db import init_db
+from backend.app.database.seed import seed_database
+
 from backend.app.models.ticket import Ticket
 from backend.app.models.prediction import Prediction
+
 from backend.app.llm.ticket_agent import classify_ticket
 from backend.app.evaluation.reward import calculate_reward
 
@@ -17,18 +19,19 @@ app = FastAPI(
 )
 
 
-# --------------------------------------------------
+# ==========================================================
 # DATABASE INITIALIZATION
-# --------------------------------------------------
+# ==========================================================
 
 @app.on_event("startup")
 def startup():
+
     init_db()
 
 
-# --------------------------------------------------
+# ==========================================================
 # CORS
-# --------------------------------------------------
+# ==========================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,65 +46,59 @@ app.add_middleware(
 )
 
 
-# --------------------------------------------------
+# ==========================================================
 # ROOT
-# --------------------------------------------------
+# ==========================================================
 
 @app.get("/")
 def root():
+
     return {
         "message": "Enterprise Workflow RL Environment API",
         "status": "running",
     }
 
 
-# --------------------------------------------------
-# HEALTH CHECK
-# --------------------------------------------------
+# ==========================================================
+# HEALTH
+# ==========================================================
 
 @app.get("/health")
 def health_check():
+
     return {
         "status": "healthy",
         "service": "enterprise-workflow-api",
     }
 
 
-# --------------------------------------------------
+# ==========================================================
 # SEED DATABASE
-# --------------------------------------------------
+# ==========================================================
 
 @app.post("/seed")
 def seed():
 
     try:
-        seed_database()
 
-        db = SessionLocal()
-
-        try:
-            ticket_count = db.query(Ticket).count()
-
-        finally:
-            db.close()
+        result = seed_database()
 
         return {
-            "message": "Database seeded successfully",
-            "status": "success",
-            "total_tickets": ticket_count,
+            "message": "Database seed operation completed",
+            **result,
         }
 
-    except Exception as error:
+    except Exception as e:
 
         raise HTTPException(
             status_code=500,
-            detail=f"Database seeding failed: {str(error)}",
+            detail=str(e),
         )
 
 
-# --------------------------------------------------
+# ==========================================================
 # GET TICKETS
-# --------------------------------------------------
+# ==========================================================
 
 @app.get("/tickets")
 def get_tickets():
@@ -128,9 +125,9 @@ def get_tickets():
         db.close()
 
 
-# --------------------------------------------------
+# ==========================================================
 # PROCESS TICKET
-# --------------------------------------------------
+# ==========================================================
 
 @app.post("/tickets/{ticket_id}/process")
 def process_ticket(ticket_id: int):
@@ -152,7 +149,7 @@ def process_ticket(ticket_id: int):
                 detail="Ticket not found",
             )
 
-        # Send ticket to AI agent
+        # AI classification
         result = classify_ticket(ticket)
 
         # Calculate reward
@@ -161,7 +158,7 @@ def process_ticket(ticket_id: int):
             expected_escalation=ticket.expected_escalation,
         )
 
-        # Save prediction
+        # Store prediction
         prediction = Prediction(
             ticket_id=ticket.id,
             predicted_category=result["category"],
@@ -194,9 +191,9 @@ def process_ticket(ticket_id: int):
         db.close()
 
 
-# --------------------------------------------------
+# ==========================================================
 # GET PREDICTIONS
-# --------------------------------------------------
+# ==========================================================
 
 @app.get("/predictions")
 def get_predictions():
@@ -224,9 +221,9 @@ def get_predictions():
         db.close()
 
 
-# --------------------------------------------------
+# ==========================================================
 # METRICS
-# --------------------------------------------------
+# ==========================================================
 
 @app.get("/metrics")
 def get_metrics():
@@ -239,7 +236,6 @@ def get_metrics():
 
         total_predictions = len(predictions)
 
-        # No predictions yet
         if total_predictions == 0:
 
             return {
@@ -249,14 +245,12 @@ def get_metrics():
                 "average_reward": 0.0,
             }
 
-        # Count correct predictions
         correct_predictions = sum(
             1
             for prediction in predictions
             if prediction.reward == 1
         )
 
-        # Average reward
         average_reward = (
             sum(
                 prediction.reward
@@ -265,7 +259,6 @@ def get_metrics():
             / total_predictions
         )
 
-        # Accuracy
         accuracy = (
             correct_predictions
             / total_predictions
