@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.database.connection import SessionLocal
+from backend.app.database.init_db import init_db
 from backend.app.models.ticket import Ticket
 from backend.app.models.prediction import Prediction
 from backend.app.llm.ticket_agent import classify_ticket
@@ -13,6 +14,10 @@ app = FastAPI(
     description="B2B customer-support workflow and evaluation system",
     version="1.0.0",
 )
+
+
+# Initialize database tables when the application starts
+init_db()
 
 
 app.add_middleware(
