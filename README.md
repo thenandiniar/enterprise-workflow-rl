@@ -520,7 +520,7 @@ The intended production architecture is:
  CI/CD pipeline
  Cloud deployment
  Automated evaluation pipeline
-🎯 Project Goals
+🎯 Project Goals are as below...
 
 The project demonstrates how multiple production technologies can be combined into an AI-driven enterprise workflow:
 
